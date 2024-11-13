@@ -1,0 +1,2 @@
+# wubo
+Archlinux笔记

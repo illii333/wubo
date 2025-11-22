@@ -1,0 +1,311 @@
+import os
+import subprocess
+import sys
+import tty
+import termios
+
+def get_key():
+    """读取单个按键（无需回车，直接响应）"""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)  # 简化写法，直接使用fd
+        key = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return key
+
+def get_file_info(file_path):
+    """获取文件的 MIME 类型和扩展名"""
+    try:
+        # 处理路径中的特殊字符（如空格），用shlex.quote更安全
+        import shlex
+        mime = subprocess.check_output(
+            f"file --mime-type -Lb {shlex.quote(file_path)}",
+            shell=True,
+            text=True
+        ).strip()
+    except subprocess.CalledProcessError:
+        mime = ""
+    ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+    return mime, ext
+
+def is_supported_file(mime, ext):
+    """判断文件是否为支持的类型"""
+    code_exts = ['py', 'java', 'c', 'cpp', 'h', 'hpp', 'js', 'html', 'css', 'php', 'go', 'rs', 'md', 'txt', 'json', 'yaml', 'yml', 'xml', 'ini', 'conf']
+    return (
+        (mime.startswith("image/") and mime in ["image/png", "image/jpeg", "image/svg+xml"]) or ext == "kra"
+        or mime.startswith("video/")
+        or ext == "sh"
+        or ext == "appimage"
+        or ext in code_exts
+        or mime.startswith("text/")
+    )
+
+def handle_image(file_path):
+    print("\n图片操作：")
+    print("1. 用 nomacs 打开")
+    print("2. 用 Krita 打开")
+    print("3. FFmpeg 压缩/调整大小")
+    key = get_key()
+
+    if key == "1":
+        nomacs_path = "/usr/bin/nomacs"
+        if os.path.exists(nomacs_path):
+            subprocess.Popen([nomacs_path, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 nomacs 打开：{file_path}")
+        else:
+            print("错误：nomacs 未安装或路径不正确")
+
+    elif key == "2":
+        krita_path = "/home/wubo/Desktop/磁盘/档案/2024/Appimage/krita.Appimage"
+        if os.path.exists(krita_path):
+            subprocess.Popen([krita_path, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 Krita 打开：{file_path}")
+        else:
+            print(f"错误：Krita 路径不存在 → {krita_path}")
+
+    elif key == "3":
+        output = f"{os.path.splitext(file_path)[0]}_processed.png"
+        print("\n===== 图片FFmpeg处理 =====")
+        max_width = input("请输入最大宽度（像素，默认 1920）: ") or "1920"
+        quality = input("请输入质量（0-100，默认 80）: ") or "80"
+
+        print(f"正在处理图片到：{output}...")
+        cmd = [
+            "ffmpeg", "-i", file_path,
+            "-vf", f"scale='min({max_width},iw)':-1",
+            "-q:v", quality,
+            output
+        ]
+        result = subprocess.run(cmd, stderr=subprocess.STDOUT, text=True)
+        if result.returncode == 0:
+            print(f"✅ 图片处理完成，生成：{output}")
+        else:
+            print(f"❌ 图片处理失败（错误码：{result.returncode}）")
+
+    else:
+        print("无效按键，返回上级菜单")
+
+def handle_video(file_path):
+    print("\n视频操作：")
+    print("1. 用 LosslessCut 打开")
+    print("2. 用 Shotcut 打开")
+    print("3. FFmpeg 压缩/调整大小")
+    key = get_key()
+
+    if key == "1":
+        lossless_path = "/home/wubo/Desktop/磁盘/档案/2024/Appimage/LosslessCut-linux-x86_64.AppImage"
+        if os.path.exists(lossless_path):
+            subprocess.Popen([lossless_path, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 LosslessCut 打开：{file_path}")
+        else:
+            print("错误：LosslessCut 路径不存在")
+
+    elif key == "2":
+        shotcut_path = "/home/wubo/Desktop/磁盘/档案/2024/Appimage/shotcut.AppImage"
+        if os.path.exists(shotcut_path):
+            subprocess.Popen([shotcut_path, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 Shotcut 打开：{file_path}")
+        else:
+            print("错误：Shotcut 路径不存在")
+
+    elif key == "3":
+        output = f"{os.path.splitext(file_path)[0]}_processed.mp4"
+        print("\n===== 视频FFmpeg处理 =====")
+        max_width = input("请输入最大宽度（像素，默认 1920）: ") or "1920"
+        crf = input("请输入质量系数（CRF 18-28，默认 23）: ") or "23"
+
+        print(f"正在处理视频到：{output}...")
+        cmd = [
+            "ffmpeg", "-i", file_path,
+            "-vf", f"scale='min({max_width},iw)':-1",
+            "-vcodec", "libx264",
+            "-crf", crf,
+            "-preset", "medium",
+            "-acodec", "aac",
+            "-b:a", "128k",
+            output
+        ]
+        result = subprocess.run(cmd, stderr=subprocess.STDOUT, text=True)
+        if result.returncode == 0:
+            print(f"✅ 视频处理完成，生成：{output}")
+        else:
+            print(f"❌ 视频处理失败（错误码：{result.returncode}）")
+
+    else:
+        print("无效按键，返回上级菜单")
+
+def handle_script(file_path):
+    print("\n脚本操作：")
+    print("1. 普通运行（bash）")
+    print("2. 管理员运行（sudo）")
+    key = get_key()
+
+    if key == "1":
+        subprocess.Popen(["bash", file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"运行脚本：{file_path}")
+    elif key == "2":
+        print(f"sudo 运行脚本：{file_path}")
+        subprocess.run(["sudo", "bash", file_path])
+    else:
+        print("无效按键，返回上级菜单")
+
+def handle_appimage(file_path):
+    print(f"\n检测到 AppImage 文件：{file_path}")
+    os.chmod(file_path, 0o755)
+    subprocess.Popen([file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"已运行 AppImage：{file_path}")
+
+def handle_code_file(file_path, ext):
+    """处理代码文件和md文件（针对Arch + Kitty优化）"""
+    print(f"\n{ext.upper() if ext else '文本'}文件操作：")
+    print("1. 用 Firefox 打开（MD文件预览）")
+    print("2. 用 Vim 打开（Kitty终端）")
+    print("3. 用 VSCode 打开")
+    key = get_key()
+
+    if key == "1":
+        if ext == 'md':
+            # MD文件用firefox预览
+            subprocess.Popen(["firefox", file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 Firefox 预览 MD 文件：{file_path}")
+        else:
+            # 其他代码文件用firefox查看
+            subprocess.Popen(["firefox", "-new-tab", f"file://{os.path.abspath(file_path)}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"用 Firefox 打开：{file_path}")
+
+    elif key == "2":
+        abs_path = os.path.abspath(file_path)
+        
+        # Kitty终端的正确调用方式（Arch Linux）
+        try:
+            # 方法1：直接用kitty打开vim
+            cmd = ["kitty", "vim", abs_path]
+            subprocess.Popen(cmd)
+            print(f"用 Kitty + Vim 打开：{file_path}")
+            
+        except Exception as e1:
+            try:
+                # 方法2：用kitty的--single-instance参数
+                cmd = ["kitty", "--single-instance", "vim", abs_path]
+                subprocess.Popen(cmd)
+                print(f"用 Kitty (single-instance) + Vim 打开：{file_path}")
+                
+            except Exception as e2:
+                try:
+                    # 方法3：通过bash启动
+                    cmd = ["kitty", "--", "bash", "-c", f"vim '{abs_path}'"]
+                    subprocess.Popen(cmd)
+                    print(f"用 Kitty + Bash + Vim 打开：{file_path}")
+                    
+                except Exception as e3:
+                    print(f"尝试多种方式失败，错误：{e3}")
+                    print("直接在当前终端打开Vim...")
+                    # 直接在当前终端运行vim
+                    subprocess.run(["vim", abs_path])
+
+    elif key == "3":
+        # 尝试多种VSCode路径（Arch Linux）
+        vscode_paths = [
+            "/usr/bin/code",
+            "/usr/bin/code-oss",  # Arch的code-oss
+            "code",
+            "code-oss"
+        ]
+        
+        vscode_found = False
+        for vscode_path in vscode_paths:
+            try:
+                subprocess.Popen([vscode_path, file_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"用 VSCode/{vscode_path} 打开：{file_path}")
+                vscode_found = True
+                break
+            except FileNotFoundError:
+                continue
+        
+        if not vscode_found:
+            print("错误：VSCode/code-oss 未安装")
+            # 回退到vim
+            abs_path = os.path.abspath(file_path)
+            subprocess.run(["vim", abs_path])
+
+    else:
+        print("无效按键，返回上级菜单")
+
+def main():
+    # 确保传入文件路径
+    if len(sys.argv) != 2:
+        print("错误：请通过参数传入文件路径（例如：python3 script.py 文件名）")
+        sys.exit(1)
+    
+    file_path = sys.argv[1]
+
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        print(f"错误：文件不存在 → {file_path}")
+        sys.exit(1)
+
+    # 获取文件信息
+    mime, ext = get_file_info(file_path)
+    print(f"\n检测到文件：{file_path}（类型：{mime}，扩展名：{ext}）")
+
+    # 处理不支持的文件类型
+    if not is_supported_file(mime, ext):
+        print("该文件类型不支持默认处理")
+        print("请选择：1 (返回) / 2 (创建新文件) / 3 (创建新文件夹)")
+        key = get_key()
+
+        if key == "1":
+            print("已返回")
+            sys.exit(0)
+
+        elif key == "2":
+            print("\n===== 创建新文件 =====")
+            new_file = input("请输入新文件路径（例如：~/test.txt）：").strip()
+            new_file = os.path.expanduser(new_file)
+            try:
+                parent_dir = os.path.dirname(new_file)
+                if parent_dir and not os.path.exists(parent_dir):
+                    os.makedirs(parent_dir, exist_ok=True)
+                with open(new_file, 'w') as f:
+                    pass
+                print(f"✅ 成功创建文件：{new_file}")
+            except Exception as e:
+                print(f"❌ 创建文件失败：{e}")
+            sys.exit(0)
+
+        elif key == "3":
+            print("\n===== 创建新文件夹 =====")
+            new_dir = input("请输入新文件夹路径（例如：~/mydir）：").strip()
+            new_dir = os.path.expanduser(new_dir)
+            try:
+                os.makedirs(new_dir, exist_ok=True)
+                print(f"✅ 成功创建文件夹：{new_dir}")
+            except Exception as e:
+                print(f"❌ 创建文件夹失败：{e}")
+            sys.exit(0)
+
+        else:
+            print("无效选择，返回")
+            sys.exit(0)
+
+    # 处理支持的文件类型
+    code_exts = ['py', 'java', 'c', 'cpp', 'h', 'hpp', 'js', 'html', 'css', 'php', 'go', 'rs', 'md', 'txt', 'json', 'yaml', 'yml', 'xml', 'ini', 'conf']
+    
+    if (mime.startswith("image/") and mime in ["image/png", "image/jpeg", "image/svg+xml"]) or ext == "kra":
+        handle_image(file_path)
+    elif mime.startswith("video/"):
+        handle_video(file_path)
+    elif ext == "sh":
+        handle_script(file_path)
+    elif ext == "appimage":
+        handle_appimage(file_path)
+    elif ext in code_exts or mime.startswith("text/"):
+        handle_code_file(file_path, ext)
+    else:
+        print("无法处理该文件类型")
+
+if __name__ == "__main__":
+    main()
+

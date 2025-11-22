@@ -1,0 +1,8 @@
+
+set icons
+set number 
+set drawbox 
+map p :paste; clear
+set cursoractivefmt "\033[37;43m"
+map e $ python3 ~/.config/lf/open.py "$f"
+
